@@ -321,4 +321,39 @@ private:
   std::string hostsPath_;
   std::string outputPath_;
   std::string configPath_;
+
+public:
+  struct Config {
+    uint8_t messages_num;
+    unsigned long receiver_id;
+  };
+
+  struct Config config(){
+    std::ifstream configFile(configPath());
+    if (!configFile.is_open()) {
+      throw std::invalid_argument("Could not open config file");
+    }
+
+    Config config;
+
+    std::string line;
+    while (std::getline(configFile, line)) {
+
+      std::istringstream iss(line);
+
+      trim(line);
+      if (line.empty()) {
+        continue;
+      }
+    
+      std::string word;
+      iss >> word;
+      config.messages_num = static_cast<uint8_t>(std::stoi(word));
+      iss >> word;
+      config.receiver_id = std::stoul(word);
+    }
+
+    return config;
+  }
+
 };

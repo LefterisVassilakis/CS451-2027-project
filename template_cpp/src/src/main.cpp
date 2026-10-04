@@ -5,6 +5,7 @@
 #include "parser.hpp"
 #include "hello.h"
 #include <signal.h>
+#include "socket_wrapper.hpp"
 
 
 static void stop(int) {
@@ -65,7 +66,27 @@ int main(int argc, char **argv) {
 
   std::cout << "Doing some initialization...\n\n";
 
+  SocketWrapper socketWrapper = SocketWrapper(hosts[parser.id()].portReadable());
+  auto config = parser.config();
+
   std::cout << "Broadcasting and delivering messages...\n\n";
+
+  if (parser.id() == config.receiver_id) {
+    std::cout << "I am the receiver. I will receive " << static_cast<int>(config.messages_num)   << " messages.\n";
+    char buffer[1024];
+    while (true) {
+      socketWrapper.ReceiveMessage(buffer, sizeof(buffer));
+      std::cout << "Received message: " << buffer << "\n";
+    }
+  } else {
+    std::cout << "I am a sender. I will send " << static_cast<int>(config.messages_num)  << " messages.\n";
+    for (int i = 0; i < config.messages_num; i++) {
+      std::string message = "Hello from process " + std::to_string(parser.id())
+                            + " message " + std::to_string(i);
+      socketWrapper.SendMessage(message.c_str(), hosts[config.receiver_id].ipReadable().c_str(), hosts[config.receiver_id].portReadable());
+      std::cout << "Sent message: " << message << "\n";
+    }
+  }
 
   // After a process finishes broadcasting,
   // it waits forever for the delivery of messages.
