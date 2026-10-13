@@ -4,40 +4,30 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <arpa/inet.h>
-#include <cstring>
-#include <iostream>
-
 
 class SocketWrapper{
     public:
 
-        SocketWrapper(unsigned short port){
+        explicit SocketWrapper(unsigned short port){
             createSocket();
             bindSocket(port);
         }
 
-        int SendMessage(const char *message, const char *ip, short unsigned port){
-            struct sockaddr_in dest_addr;
-            dest_addr.sin_family = AF_INET;
-            dest_addr.sin_port = htons(port);
-            dest_addr.sin_addr.s_addr = inet_addr(ip);
-
-            if (sendto(sockfd, message, strlen(message), 0, reinterpret_cast<struct sockaddr*>(&dest_addr), sizeof(dest_addr)) < 0) {
+        int SendMessage(const void *data, size_t len, const sockaddr_in& dest_addr){
+            if (sendto(sockfd, data, len, 0, reinterpret_cast<const struct sockaddr*>(&dest_addr), sizeof(dest_addr)) < 0) {
                 perror("sendto");
-                exit(EXIT_FAILURE);
+                return -1;
             }
             return 0;
         }
 
-        ssize_t ReceiveMessage(char *buffer, int bufferSize){
-            socklen_t addr_len = sizeof(addr);
-            ssize_t bytes_received = recvfrom(sockfd, buffer, bufferSize - 1, 0, reinterpret_cast<struct sockaddr*>(&addr), &addr_len);
+        ssize_t ReceiveMessage(char *buffer, size_t buffer_size, sockaddr_in& from){
+            socklen_t addr_len = sizeof(from);
+            ssize_t bytes_received = recvfrom(sockfd, buffer, buffer_size, 0, reinterpret_cast<struct sockaddr*>(&from), &addr_len);
             if (bytes_received < 0) {
                 perror("recvfrom");
-                exit(EXIT_FAILURE);
+                return -1;
             }
-            buffer[bytes_received] = '\0';
-            std::cout << "Received message from " << inet_ntoa(addr.sin_addr) << ":" << ntohs(addr.sin_port) << std::endl;
             return bytes_received;
         }
 
@@ -45,12 +35,13 @@ class SocketWrapper{
             closeSocket();
         }
 
+        SocketWrapper(const SocketWrapper&) = delete;
+        SocketWrapper& operator=(const SocketWrapper&) = delete;
+
     private:
         int sockfd;
-        struct sockaddr_in addr;
 
         void createSocket(){
-            
             sockfd = socket(AF_INET, SOCK_DGRAM, 0);
             if (sockfd < 0) {
                 perror("socket");
@@ -59,6 +50,7 @@ class SocketWrapper{
         }
 
         void bindSocket(unsigned short port){
+            struct sockaddr_in addr;
 
             addr.sin_family = AF_INET;
             addr.sin_addr.s_addr = INADDR_ANY;

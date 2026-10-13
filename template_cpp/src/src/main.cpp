@@ -2,7 +2,7 @@
 #include <iostream>
 #include <thread>
 
-#include "parser.hpp"
+#include "parser.hpp" //change to inclune PL instead
 #include "hello.h"
 #include <signal.h>
 #include "socket_wrapper.hpp"
@@ -72,19 +72,21 @@ int main(int argc, char **argv) {
   std::cout << "Broadcasting and delivering messages...\n\n";
 
   if (parser.id() == config.receiver_id) {
-    std::cout << "I am the receiver. I will receive " << static_cast<int>(config.messages_num)   << " messages.\n";
     char buffer[1024];
+    sockaddr_in from;
     while (true) {
-      socketWrapper.ReceiveMessage(buffer, sizeof(buffer));
-      std::cout << "Received message: " << buffer << "\n";
+      socketWrapper.ReceiveMessage(buffer, sizeof(buffer), from);
     }
   } else {
     std::cout << "I am a sender. I will send " << static_cast<int>(config.messages_num)  << " messages.\n";
     for (int i = 0; i < config.messages_num; i++) {
       std::string message = "Hello from process " + std::to_string(parser.id())
                             + " message " + std::to_string(i);
-      socketWrapper.SendMessage(message.c_str(), hosts[config.receiver_id].ipReadable().c_str(), hosts[config.receiver_id].portReadable());
-      std::cout << "Sent message: " << message << "\n";
+      sockaddr_in dest_addr;
+      dest_addr.sin_family = AF_INET;
+      dest_addr.sin_port = htons(hosts[config.receiver_id].portReadable());
+      dest_addr.sin_addr.s_addr = inet_addr(hosts[config.receiver_id].ipReadable().c_str());
+      socketWrapper.SendMessage(message.c_str(), message.length(), dest_addr);
     }
   }
 
