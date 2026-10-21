@@ -1,11 +1,12 @@
 #include <chrono>
 #include <iostream>
 #include <thread>
+#include <vector>
 
 #include "parser.hpp" //change to inclune PL instead
 #include "hello.h"
 #include <signal.h>
-#include "socket_wrapper.hpp"
+#include "perfect_links.hpp"
 
 
 static void stop(int) {
@@ -66,29 +67,33 @@ int main(int argc, char **argv) {
 
   std::cout << "Doing some initialization...\n\n";
 
-  SocketWrapper socketWrapper = SocketWrapper(hosts[parser.id()].portReadable());
+  // PerfectLinks perfectLinks = PerfectLinks(hosts[parser.id()].portReadable());
+
+
   auto config = parser.config();
 
   std::cout << "Broadcasting and delivering messages...\n\n";
+  PerfectLinks pl = PerfectLinks(parser.id(), hosts, [](uint32_t senderId, const uint8_t* data, size_t len) {
+    if (len != sizeof(uint32_t)) {
+      return;
+    }
+    uint32_t payloadNet;
+    std::memcpy(&payloadNet, data, sizeof(payloadNet));
+    uint32_t payload = ntohl(payloadNet);
+    std::cout << "Received message from sender ID: " << senderId << ", length: " << len << ", payload: " << payload << "\n";
+  });
 
   if (parser.id() == config.receiver_id) {
-    char buffer[1024];
-    sockaddr_in from;
-    while (true) {
-      socketWrapper.ReceiveMessage(buffer, sizeof(buffer), from);
-    }
+    pl.start();
   } else {
-    std::cout << "I am a sender. I will send " << static_cast<int>(config.messages_num)  << " messages.\n";
-    for (int i = 0; i < config.messages_num; i++) {
-      std::string message = "Hello from process " + std::to_string(parser.id())
-                            + " message " + std::to_string(i);
-      sockaddr_in dest_addr;
-      dest_addr.sin_family = AF_INET;
-      dest_addr.sin_port = htons(hosts[config.receiver_id].portReadable());
-      dest_addr.sin_addr.s_addr = inet_addr(hosts[config.receiver_id].ipReadable().c_str());
-      socketWrapper.SendMessage(message.c_str(), message.length(), dest_addr);
+    uint32_t payload;
+    std::cout << "Sending " << static_cast<int>(config.messages_num) << " messages to receiver ID: " << config.receiver_id << "\n";
+    for (int i = 1; i <= config.messages_num; ++i) {
+      payload = htonl(i);
+      pl.SendMessage(config.receiver_id, reinterpret_cast<const uint8_t*>(&payload), sizeof(payload));
     }
   }
+
 
   // After a process finishes broadcasting,
   // it waits forever for the delivery of messages.
