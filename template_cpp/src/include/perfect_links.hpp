@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <functional>
 #include <vector>
+#include <set>
 #include <cstring>
 #include <stdexcept>
 #include <thread>
@@ -22,6 +23,12 @@ enum class PacketType : uint8_t {
     ACK = 1
 };
 
+struct DedupState{
+    unsigned long lowestDeliveredSeq = 0;
+    unsigned long highestDeliveredSeq = 0;
+    std::set<unsigned long> missingSeqs;
+};
+
 class PerfectLinks {
     public:
         using DeliverCallback = std::function<void(uint32_t senderId, const uint8_t* data, size_t len)>;
@@ -38,6 +45,7 @@ class PerfectLinks {
                     addr.sin_addr.s_addr = host.ip;
                     addr.sin_port = host.port;
                     peers_.push_back(addr);
+                    dedupStates_.emplace_back();
                 }
         }
 
@@ -56,16 +64,20 @@ class PerfectLinks {
             uint32_t lenNet = htonl(static_cast<uint32_t>(len));
             std::memcpy(buf + OFFSET_LEN, &lenNet, sizeof(lenNet));
             std::memcpy(buf + HEADER_SIZE, data, len);
-            socket_.SendPacket(buf, HEADER_SIZE+len, peers_[receiverId - 1]);
+            socket_.SendPacket(buf, HEADER_SIZE + len, peers_[receiverId - 1]);
+            int randomNum = rand() % 2;
+            if (randomNum == 0) {
+                socket_.SendPacket(buf, HEADER_SIZE+len, peers_[receiverId - 1]);
+            }
 
         }
 
-        void start(){
+        void Start(){
             receiverThread_ = std::thread(&PerfectLinks::ReceiveLoop, this);
             receiverThread_.detach();
         }
 
-        unsigned long id() const {
+        unsigned long Id() const {
             return id_;
         }
 
@@ -77,6 +89,8 @@ class PerfectLinks {
         std::vector<sockaddr_in> peers_;
         std::vector<uint32_t> nextSeq_;
         std::thread receiverThread_;
+        std::vector<DedupState> dedupStates_;
+        bool deduplicationEnabled_ = true;
 
         void DeliverMessage(uint32_t senderId, const uint8_t* data, size_t len) {
             deliver_(senderId, data, len);
@@ -110,8 +124,43 @@ class PerfectLinks {
                         continue;
                     }
 
-                    DeliverMessage(senderId, buf + HEADER_SIZE, len);
+                    if (senderId < 1 || senderId > dedupStates_.size()) {
+                        continue;
+                    }
+                    
+                    if (deduplicationEnabled_) {
+                        if (IsNewMessage(senderId, seq)) {
+                            DeliverMessage(senderId, buf + HEADER_SIZE, len);
+                        }
+                    } else {
+                        DeliverMessage(senderId, buf + HEADER_SIZE, len);
+                    }
+
+                    
                 }
             }
+        }
+
+        bool IsNewMessage(uint32_t senderId, uint32_t seq) {
+            DedupState& state = dedupStates_[senderId - 1];
+
+            if (seq <= state.lowestDeliveredSeq) {
+                return false;
+            }
+            if (seq <= state.highestDeliveredSeq) {
+                if (state.missingSeqs.erase(seq) == 0) {
+                    return false;
+                }
+            } else {
+                for (unsigned long s = state.highestDeliveredSeq + 1; s < seq; ++s) {
+                    state.missingSeqs.insert(s);
+                }
+                state.highestDeliveredSeq = seq;
+            }
+            state.lowestDeliveredSeq = state.missingSeqs.empty()
+                ? state.highestDeliveredSeq
+                : *state.missingSeqs.begin() - 1;
+
+            return true;
         }
 };

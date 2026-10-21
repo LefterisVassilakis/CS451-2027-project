@@ -67,9 +67,6 @@ int main(int argc, char **argv) {
 
   std::cout << "Doing some initialization...\n\n";
 
-  // PerfectLinks perfectLinks = PerfectLinks(hosts[parser.id()].portReadable());
-
-
   auto config = parser.config();
 
   std::cout << "Broadcasting and delivering messages...\n\n";
@@ -84,7 +81,7 @@ int main(int argc, char **argv) {
   });
 
   if (parser.id() == config.receiver_id) {
-    pl.start();
+    pl.Start();
   } else {
     uint32_t payload;
     std::cout << "Sending " << static_cast<int>(config.messages_num) << " messages to receiver ID: " << config.receiver_id << "\n";
