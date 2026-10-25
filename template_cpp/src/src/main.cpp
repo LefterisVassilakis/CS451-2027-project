@@ -2,31 +2,36 @@
 #include <iostream>
 #include <thread>
 #include <vector>
-
-#include "parser.hpp" //change to inclune PL instead
-#include "hello.h"
 #include <signal.h>
+#include <string.h>
+
+#include "parser.hpp"
+#include "hello.h"
 #include "perfect_links.hpp"
+#include "logger.hpp"
 
+// static void stop(int) {
+//   // reset signal handlers to default
+//   signal(SIGTERM, SIG_DFL);
+//   signal(SIGINT, SIG_DFL);
 
-static void stop(int) {
-  // reset signal handlers to default
-  signal(SIGTERM, SIG_DFL);
-  signal(SIGINT, SIG_DFL);
+//   // immediately stop network packet processing
+//   std::cout << "Immediately stopping network packet processing.\n";
 
-  // immediately stop network packet processing
-  std::cout << "Immediately stopping network packet processing.\n";
+//   // write/flush output file if necessary
+//   std::cout << "Writing output.\n";
 
-  // write/flush output file if necessary
-  std::cout << "Writing output.\n";
+//   // exit directly from signal handler
+//   exit(0);
+// }
 
-  // exit directly from signal handler
-  exit(0);
-}
 
 int main(int argc, char **argv) {
-  signal(SIGTERM, stop);
-  signal(SIGINT, stop);
+  sigset_t signals;
+  sigemptyset(&signals);
+  sigaddset(&signals, SIGINT);
+  sigaddset(&signals, SIGTERM);
+  pthread_sigmask(SIG_BLOCK, &signals, nullptr);
 
   // `true` means that a config file is required.
   // Call with `false` if no config file is necessary.
@@ -69,24 +74,38 @@ int main(int argc, char **argv) {
 
   auto config = parser.config();
 
+  Logger logger(parser.outputPath());
+
   std::cout << "Broadcasting and delivering messages...\n\n";
-  PerfectLinks pl = PerfectLinks(parser.id(), hosts, [](uint32_t senderId, const uint8_t* data, size_t len) {
+  PerfectLinks pl = PerfectLinks(parser.id(), hosts, [&logger](uint32_t senderId, const uint8_t* data, size_t len){
     if (len != sizeof(uint32_t)) {
       return;
     }
     uint32_t payloadNet;
     std::memcpy(&payloadNet, data, sizeof(payloadNet));
     uint32_t payload = ntohl(payloadNet);
-    std::cout << "Received message from sender ID: " << senderId << ", length: " << len << ", payload: " << payload << "\n";
+    logger.LogDeliver(senderId, payload);
   });
 
+  std::thread signalThread([&]() {
+    int sig;
+    sigwait(&signals, &sig);
+    pl.Stop();
+    logger.FlushAll();
+    _exit(0);
+  });
+  signalThread.detach();
+
+  pl.Start();
+
   if (parser.id() == config.receiver_id) {
-    pl.Start();
+
   } else {
     uint32_t payload;
-    std::cout << "Sending " << static_cast<int>(config.messages_num) << " messages to receiver ID: " << config.receiver_id << "\n";
-    for (int i = 1; i <= config.messages_num; ++i) {
+    std::cout << "Sending " << config.messages_num << " messages to receiver ID: " << config.receiver_id << "\n";
+    for (uint32_t i = 1; i <= config.messages_num; ++i) {
       payload = htonl(i);
+      logger.LogBroadcast(i);
       pl.SendMessage(config.receiver_id, reinterpret_cast<const uint8_t*>(&payload), sizeof(payload));
     }
   }

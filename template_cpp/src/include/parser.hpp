@@ -324,7 +324,7 @@ private:
 
 public:
   struct Config {
-    uint8_t messages_num;
+    uint32_t messages_num;
     unsigned long receiver_id;
   };
 
@@ -348,7 +348,7 @@ public:
     
       std::string word;
       iss >> word;
-      config.messages_num = static_cast<uint8_t>(std::stoi(word));
+      config.messages_num = static_cast<uint32_t>(std::stoi(word));
       iss >> word;
       config.receiver_id = std::stoul(word);
     }

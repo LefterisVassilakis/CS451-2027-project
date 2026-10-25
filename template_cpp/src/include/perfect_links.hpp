@@ -1,3 +1,5 @@
+#pragma once
+
 #include "socket_wrapper.hpp"
 #include "parser.hpp"
 #include <cstdint>
@@ -7,6 +9,7 @@
 #include <cstring>
 #include <stdexcept>
 #include <thread>
+#include <atomic>
 
 static constexpr size_t MAX_PACKET_SIZE = 65507; // Maximum size for a UDP packet payload
 static constexpr size_t OFFSET_TYPE   = 0;
@@ -51,6 +54,8 @@ class PerfectLinks {
 
         void SendMessage(unsigned long receiverId, const uint8_t* data, size_t len) {
 
+            if (stopped_) return;
+
             if  (len > MAX_MESSAGE_SIZE) {
                 throw std::invalid_argument("Message length exceeds maximum allowed size.");
             }
@@ -65,11 +70,6 @@ class PerfectLinks {
             std::memcpy(buf + OFFSET_LEN, &lenNet, sizeof(lenNet));
             std::memcpy(buf + HEADER_SIZE, data, len);
             socket_.SendPacket(buf, HEADER_SIZE + len, peers_[receiverId - 1]);
-            int randomNum = rand() % 2;
-            if (randomNum == 0) {
-                socket_.SendPacket(buf, HEADER_SIZE+len, peers_[receiverId - 1]);
-            }
-
         }
 
         void Start(){
@@ -81,6 +81,9 @@ class PerfectLinks {
             return id_;
         }
 
+        void Stop() {
+            stopped_ = true;
+        }
 
     private:
         SocketWrapper socket_;
@@ -91,6 +94,7 @@ class PerfectLinks {
         std::thread receiverThread_;
         std::vector<DedupState> dedupStates_;
         bool deduplicationEnabled_ = true;
+        std::atomic<bool> stopped_{false};
 
         void DeliverMessage(uint32_t senderId, const uint8_t* data, size_t len) {
             deliver_(senderId, data, len);
@@ -101,6 +105,7 @@ class PerfectLinks {
             sockaddr_in from;
             while (true) {
                 ssize_t bytesReceived = socket_.ReceivePacket(buf, sizeof(buf), from);
+                if (stopped_) return;
                 if (bytesReceived < 0) {
                     continue;
                 }
