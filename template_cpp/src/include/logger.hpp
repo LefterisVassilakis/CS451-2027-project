@@ -50,7 +50,7 @@ class Logger {
 
             *p++ = ' ';
             auto [ptr2, ec2] = std::to_chars(p, line + sizeof(line), seq);
-            if (ec != std::errc()) return;
+            if (ec2 != std::errc()) return;
             p = ptr2;
 
             AppendLine(line, p-line);

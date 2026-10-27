@@ -10,22 +10,6 @@
 #include "perfect_links.hpp"
 #include "logger.hpp"
 
-// static void stop(int) {
-//   // reset signal handlers to default
-//   signal(SIGTERM, SIG_DFL);
-//   signal(SIGINT, SIG_DFL);
-
-//   // immediately stop network packet processing
-//   std::cout << "Immediately stopping network packet processing.\n";
-
-//   // write/flush output file if necessary
-//   std::cout << "Writing output.\n";
-
-//   // exit directly from signal handler
-//   exit(0);
-// }
-
-
 int main(int argc, char **argv) {
   sigset_t signals;
   sigemptyset(&signals);
@@ -102,11 +86,12 @@ int main(int argc, char **argv) {
 
   } else {
     uint32_t payload;
-    std::cout << "Sending " << config.messages_num << " messages to receiver ID: " << config.receiver_id << "\n";
     for (uint32_t i = 1; i <= config.messages_num; ++i) {
       payload = htonl(i);
       logger.LogBroadcast(i);
-      pl.SendMessage(config.receiver_id, reinterpret_cast<const uint8_t*>(&payload), sizeof(payload));
+      if (!pl.SendMessage(config.receiver_id, reinterpret_cast<const uint8_t*>(&payload), sizeof(payload))){
+        break;
+      }
     }
   }
 
